@@ -12,6 +12,7 @@ import logging
 # TODO User storage and data storage
 # TODO User read
 
+
 userlist = []
 linklist = []
 
@@ -19,27 +20,46 @@ log = logging.getLogger("my-logger")
 log.info("New session")
 
 
-
-
 def import_data():
     file = open("data.csv", 'r');
     reader = csv.reader(file)
     for row in reader:
-        if row.startswith("https://"):
-            add_link(row)
+        line = row[0]
+        if line.startswith("https://"):
+            add_link(line)
         else:
-            add_user(row)
+            add_user(line)
     log.info("Import finished")
+
 
 def add_user(username):
     link = 'https://habrahabr.ru/users/' + username + "/";
-    user = [username, link];
-    userlist.append(user);
-    log.info("User added")
+    if (verify_link(link)):
+        user = [username, link];
+        userlist.append(user);
+        log.info("User added")
+    else:
+        log.info("Bad username")
 
 def add_link(link):
-    linklist.append(link);
-    log.info("Link added")
+    if verify_link(link):
+        linklist.append(link);
+        log.info("Link added")
+    else:
+        log.info("Bad link")
+
+def get_users():
+    return userlist;
+
+def get_links():
+    return linklist;
+
+def verify_link(link):
+    ret = urlopen(link);
+    if ret.code == 200:
+        return True
+    return False
+
 
 def print_links():
     for i in linklist:
@@ -65,7 +85,6 @@ def get_all_user_posts(user):
                                      'tabs-menu__item-counter tabs-menu__item-counter_total')]")[
                               0].text_content().strip())
     number_of_pages = ceil(number_of_posts / 10)
-    print(number_of_pages);
     links = [];
     for i in range(number_of_pages - 1):
         post_link += str(i);
@@ -79,31 +98,45 @@ def get_all_user_posts(user):
         os.makedirs("csv")
 
     # Create file for every post
-    for i in links:
-        # open(i[26:31].csv, 'w')
-        print(i)
     return links
 
 
-# TODO optimize search of elements
-
-add_user("fruct")
-add_user("habr")
-print_users()
-posts = get_all_user_posts(userlist[0])
-
-# getting post link
-for post in posts:
+def get_tree(post):
     def check():
         data = urlopen(post).read();
         return data.decode('utf-8', 'ignore');
 
-
     page = requests.get(post)
-    tree = html.fromstring(page.content);
+    return html.fromstring(page.content);
 
-    # getting date, rating and bookmarks
-    result = [int(tree.xpath('(//span[@class="voting-wjt__counter voting-wjt__counter_positive  js-score"]/text())[1]')[
+
+def fix_views(views):
+    if views[-1] is 'k':
+        if ',' in views:
+            views = views.replace(',', '')
+            views = float(views[:-1])
+            return int(views * 100)
+        else:
+            views = float(views[:-1])
+            return int(views * 1000)
+    else:
+        return int(views)
+
+
+def compare(array1, array2):
+    # Comparing last result with current, ignoring the date in current, flag for result
+    for i in range(0, len(array1)):
+        if array1[i] == array2[i]:
+            continue
+        else:
+            return False
+    return True
+
+
+def get_stats(tree):
+    result = [datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+              int(tree.xpath(
+                  '(//span[@class="voting-wjt__counter voting-wjt__counter_positive  js-score"]/text())[1]')[
                       0]),
               int(tree.xpath('//span[@class="bookmark__counter js-favs_count"]/text()')[0])]
 
@@ -116,63 +149,67 @@ for post in posts:
 
     # getting views, removing 1k and making it a number
     views = tree.xpath('//span[@class="post-stats__views-count"]/text()')[0]
-    if views[-1] is 'k':
-        if ',' in views:
-            views = views.replace(',', '')
-            views = float(views[:-1])
-            views = int(views * 100)
-        else:
-            views = float(views[:-1])
-            views = int(views * 1000)
-    else:
-        views = int(views)
+    views = fix_views(views);
 
     # Appending values to array
     result.append(views)
     result.append(comments)
+    return result
 
-    #datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    '''
-    Working with file, reading and writing
-    '''
 
-    # TODO Add try catch
-    # TODO Add Logger
-    # Read the file in mode for reading and appending, naming is id of the post from link
+def get_previous_result(post):
+    last_result = []
+    reader = []
     try:
-        file = open(post[26:32] + ".csv", "a+");
+        reader = csv.reader(open(post[-7:-1] + ".csv"), delimiter=',', quotechar='|');
     except:
-        log.info("Error while opening file")
-    is_equal = False;
-    file_lines = file.readlines();
-    if len(file_lines) != 0:
-        # get last line from csv to compare it with current
-        last_line = file_lines[len(file_lines) - 1]
+        log.info("No such file")
+    reader = list(reader)
+    last_result = []
+    if reader:
+        last_result = reader[-1]
+        last_result = last_result[1:]
+        # Convert str list to int list
+        last_result = list(map(int, last_result))
+    return last_result
 
-        # remove date and time from comparison
-        last_line = last_line.split(',')[1:];
 
-        # Comparing last result with current, ignoring the date in current, flag for result
-        for i in last_line:
-            if i == result[i + 1]:
-                is_equal = True
-            else:
-                continue
-    if is_equal is False:
-        out = csv.writer(file, delimiter=',', lineterminator='\n', quoting=csv.QUOTE_ALL);
-        out.writerow(result);
-        file.close();
-    print(result)
-    print('---')
-    doc = lxml.html.document_fromstring(check())
-    '''
-    element = doc.xpath("//span[contains(@class, 'post-stats__views-count') \
-                       or contains(@class,'bookmark__counter js-favs_count') \
-                       or (contains(@class, 'voting-wjt__counter voting-wjt__counter_positive  js-score'))[1] \
-                       or contains(@class, 'post-stats__comments-count')]")
-    
-    print(len(element))
-    for i in range(len(element)):
-        print(format(element[i].text_content().strip()))
-    print("--")
-    '''
+def write_result(post, result):
+    # Write new data
+    out = csv.writer(open(post[-7:-1] + ".csv", "a"), delimiter=',', lineterminator='\n',
+                     quoting=csv.QUOTE_NONE);
+    out.writerow(result);
+
+
+def main():
+    import_data()
+    posts = []
+    for user in userlist:
+        posts += get_all_user_posts(user);
+    for link in linklist:
+        posts.append(link);
+    for post in posts:
+
+        # Getting HTML tree for the post
+        tree = get_tree(post);
+
+        # Getting current stats for the post
+        result = get_stats(tree);
+
+        # Get previous result for the post
+        previous_result = get_previous_result(post);
+
+        # Check if there were previous result
+        is_equal = False
+        if len(previous_result) != 0:
+            # Check if data changed
+            is_equal = compare(previous_result, result[1:])
+        if not is_equal:
+            write_result(post, result);
+
+
+# TODO Add try catch
+# TODO Add Logger
+# TODO optimize search of elements
+if __name__ == "__main__":
+    main()
