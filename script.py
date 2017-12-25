@@ -1,3 +1,4 @@
+import pip
 import lxml.html
 import os
 from lxml import html
@@ -21,7 +22,7 @@ log.info("New session")
 
 
 def import_data():
-    file = open("data.csv", 'r');
+    file = open("csv/data.csv", 'r');
     reader = csv.reader(file)
     for row in reader:
         line = row[0]
@@ -161,7 +162,7 @@ def get_previous_result(post):
     last_result = []
     reader = []
     try:
-        reader = csv.reader(open(post[-7:-1] + ".csv"), delimiter=',', quotechar='|');
+        reader = csv.reader(open("csv/" + post[-7:-1] + ".csv"), delimiter=',', quotechar='|');
     except:
         log.info("No such file")
     reader = list(reader)
@@ -176,7 +177,7 @@ def get_previous_result(post):
 
 def write_result(post, result):
     # Write new data
-    out = csv.writer(open(post[-7:-1] + ".csv", "a"), delimiter=',', lineterminator='\n',
+    out = csv.writer(open("csv/" + post[-7:-1] + ".csv", "a"), delimiter=',', lineterminator='\n',
                      quoting=csv.QUOTE_NONE);
     out.writerow(result);
 
